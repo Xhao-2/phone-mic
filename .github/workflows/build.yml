@@ -56,9 +56,27 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee ../gradle-build.log
+
+      # The Actions log viewer does not render for every client, so a failure
+      # writes its compiler output into the repository where it can be read
+      # without that UI. Removed once the build is green.
+      - name: Capture build log on failure
+        if: failure()
+        run: |
+          mkdir -p ci
+          cp gradle-build.log ci/build-error.txt 2>/dev/null || echo "no gradle log was produced" > ci/build-error.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ci/build-error.txt
+          git commit -m "ci: capture android build log [skip ci]" || true
+          git push || true
 
       - uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: android-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
