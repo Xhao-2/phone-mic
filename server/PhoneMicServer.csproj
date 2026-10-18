@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>PhoneMicServer</AssemblyName>
     <RootNamespace>PhoneMic</RootNamespace>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
-    <FileVersion>1.1.0.0</FileVersion>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
     <Product>PhoneMic Server</Product>
     <Description>Receives phone microphone audio over UDP and plays it into a Windows audio device (e.g. VB-Audio CABLE Input).</Description>
     <InvariantGlobalization>true</InvariantGlobalization>
