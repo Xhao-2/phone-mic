@@ -1,0 +1,5 @@
+// Top-level build file. The Android plugin version is pinned here so the CI
+// build and a local `gradle build` resolve exactly the same toolchain.
+plugins {
+    id "com.android.application" version "8.5.2" apply false
+}
