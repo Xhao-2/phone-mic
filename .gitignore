@@ -1,0 +1,21 @@
+# 编译产物
+bin/
+obj/
+publish/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.iml
+
+# 本地与系统文件
+.DS_Store
+Thumbs.db
+*.user
+*.suo
+.vs/
+
+# 不要提交签名材料
+*.jks
+*.keystore
