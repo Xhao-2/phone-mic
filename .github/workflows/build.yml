@@ -85,8 +85,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v1.0.${{ github.run_number }}" \
+          gh release create "v1.1.${{ github.run_number }}" \
             out/PhoneMicServer.exe out/PhoneMic.apk \
             --repo "${{ github.repository }}" \
-            --title "PhoneMic v1.0.${{ github.run_number }}" \
+            --title "PhoneMic v1.1.${{ github.run_number }}" \
             --notes "自动构建：Windows 服务端 PhoneMicServer.exe 与 Android 客户端 PhoneMic.apk。使用说明见 Wiki。"
