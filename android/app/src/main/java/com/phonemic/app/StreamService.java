@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.media.audiofx.AcousticEchoCanceler;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.Process;
@@ -36,6 +37,7 @@ public class StreamService extends Service {
     public static final String ACTION_STOP = "com.phonemic.app.action.STOP";
     public static final String EXTRA_IP = "com.phonemic.app.extra.IP";
     public static final String EXTRA_PORT = "com.phonemic.app.extra.PORT";
+    public static final String EXTRA_AEC = "com.phonemic.app.extra.AEC";
 
     private static final String TAG = "PhoneMic";
     private static final String CHANNEL_ID = "phonemic_stream";
@@ -51,6 +53,7 @@ public class StreamService extends Service {
     private Thread worker;
     private DatagramSocket socket;
     private AudioRecord recorder;
+    private AcousticEchoCanceler echoCanceler;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -74,8 +77,9 @@ public class StreamService extends Service {
         if (ACTION_START.equals(action)) {
             String ip = intent.getStringExtra(EXTRA_IP);
             int port = intent.getIntExtra(EXTRA_PORT, 8765);
+            boolean echoCancel = intent.getBooleanExtra(EXTRA_AEC, true);
             startForegroundCompat();
-            startStreaming(ip, port);
+            startStreaming(ip, port, echoCancel);
             return START_NOT_STICKY;
         }
 
@@ -118,7 +122,7 @@ public class StreamService extends Service {
         }
     }
 
-    private synchronized void startStreaming(String ip, int port) {
+    private synchronized void startStreaming(String ip, int port, boolean echoCancel) {
         if (running) return;
 
         try {
@@ -133,7 +137,10 @@ public class StreamService extends Service {
                     SAMPLE_RATE,
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT);
-            int bufferSize = Math.max(minBuffer, frameBytes * 8);
+            // A generous capture buffer only buys safety: it also adds exactly that
+            // much latency, because the recorder fills it ahead of the read loop.
+            // Three frames is enough headroom and keeps the capture delay near 30 ms.
+            int bufferSize = Math.max(minBuffer, frameBytes * 3);
 
             recorder = new AudioRecord(
                     MediaRecorder.AudioSource.MIC,
@@ -142,11 +149,28 @@ public class StreamService extends Service {
                     AudioFormat.ENCODING_PCM_16BIT,
                     bufferSize);
 
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                recorder.setPerformanceMode(AudioRecord.PERFORMANCE_MODE_LOW_LATENCY);
+            }
+
             if (recorder.getState() != AudioRecord.STATE_INITIALIZED) {
                 Log.e(TAG, "AudioRecord could not be initialised");
                 cleanup();
                 stopSelf();
                 return;
+            }
+
+            // Echo cancellation keeps the phone's own speaker output out of the
+            // stream. It is a system effect bound to the recorder's session, so it
+            // costs nothing on the PC side and still works when the phone is
+            // playing media through its speaker.
+            if (echoCancel && AcousticEchoCanceler.isAvailable()) {
+                echoCanceler = AcousticEchoCanceler.create(recorder.getAudioSessionId());
+                if (echoCanceler != null) {
+                    echoCanceler.setEnabled(true);
+                }
+            } else {
+                Log.i(TAG, "echo cancellation unavailable or disabled");
             }
 
             running = true;
@@ -229,6 +253,16 @@ public class StreamService extends Service {
 
     private void cleanup() {
         running = false;
+
+        try {
+            if (echoCanceler != null) {
+                echoCanceler.setEnabled(false);
+                echoCanceler.release();
+            }
+        } catch (Exception ignored) {
+            // the effect goes away with the recorder anyway
+        }
+        echoCanceler = null;
 
         try {
             if (recorder != null) recorder.release();
