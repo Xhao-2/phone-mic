@@ -1,0 +1,37 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.phonemic.app"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.phonemic.app"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            // The CI publishes the debug-signed APK, because generating a release
+            // keystore would mean shipping its password in a public repository.
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        // A lint error must not block an APK that compiles and runs.
+        abortOnError false
+    }
+}
+
+// Intentionally no dependencies: the app uses only the Android framework, so
+// there is nothing to resolve and nothing that can break the build.
