@@ -39,10 +39,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Install SDK components
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      # The ubuntu runner image already ships the Android SDK, so only the
+      # two components this project pins are ensured here. A failure to
+      # install is not fatal: the preinstalled ones are then used.
+      - name: Prepare Android SDK
+        run: |
+          if command -v sdkmanager > /dev/null 2>&1; then
+            yes | sdkmanager --licenses > /dev/null 2>&1 || true
+            yes | sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+          fi
+          echo "ANDROID_HOME=${ANDROID_HOME}"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
