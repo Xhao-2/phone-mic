@@ -149,10 +149,6 @@ public class StreamService extends Service {
                     AudioFormat.ENCODING_PCM_16BIT,
                     bufferSize);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                recorder.setPerformanceMode(AudioRecord.PERFORMANCE_MODE_LOW_LATENCY);
-            }
-
             if (recorder.getState() != AudioRecord.STATE_INITIALIZED) {
                 Log.e(TAG, "AudioRecord could not be initialised");
                 cleanup();
