@@ -62,7 +62,7 @@ internal sealed class DeviceItem
 
 internal sealed class MainForm : Form
 {
-    private const string Version = "1.1";
+    private const string Version = "1.2";
 
     private readonly ComboBox _deviceBox = new();
     private readonly Button _refreshButton = new();
@@ -163,7 +163,7 @@ internal sealed class MainForm : Form
         _latencyBox.Minimum = 20;
         _latencyBox.Maximum = 300;
         _latencyBox.Increment = 10;
-        _latencyBox.Value = 60;
+        _latencyBox.Value = 30;
         _latencyBox.Location = new Point(240, 28);
         _latencyBox.Size = new Size(72, 24);
 
@@ -322,6 +322,38 @@ internal sealed class MainForm : Form
             return;
         }
 
+        // Hearing your own voice is almost always this: the program is playing the
+        // phone audio into the speakers instead of the virtual cable. Ask before
+        // doing that, and offer to switch.
+        if (!item.Name.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
+        {
+            var cable = FindCableDevice();
+            if (cable != null)
+            {
+                var answer = MessageBox.Show(
+                    "当前输出设备不是虚拟声卡：\n\n" + item.Name +
+                    "\n\n这样手机的声音会直接从音箱或耳机放出来——你会听到自己说话，而对方仍然听不到。\n\n" +
+                    "要切换到 " + cable.Name + " 吗？",
+                    "输出设备不是虚拟声卡",
+                    MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+
+                if (answer == DialogResult.Cancel) return;
+                if (answer == DialogResult.Yes)
+                {
+                    item = cable;
+                    _deviceBox.SelectedItem = cable;
+                }
+            }
+            else
+            {
+                var answer = MessageBox.Show(
+                    "没有找到 CABLE Input，声音会被放到音箱或耳机里，你会听到自己。\n\n仍然继续吗？",
+                    "没有找到虚拟声卡",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (answer != DialogResult.Yes) return;
+            }
+        }
+
         var receiver = new MicReceiver();
         try
         {
@@ -347,6 +379,20 @@ internal sealed class MainForm : Form
         _denoiseBox.Enabled = false;
         _strengthBar.Enabled = false;
         Log($"开始监听 UDP {_portBox.Value}，输出到 {item.Name}");
+    }
+
+    private DeviceItem? FindCableDevice()
+    {
+        foreach (var entry in _deviceBox.Items)
+        {
+            if (entry is DeviceItem candidate &&
+                candidate.Name.Contains("CABLE", StringComparison.OrdinalIgnoreCase))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private void StopCapture()
@@ -565,7 +611,7 @@ internal sealed class AudioSink : IDisposable
             BufferDuration = TimeSpan.FromMilliseconds(400),
         };
 
-        _output = new WasapiOut(device, AudioClientShareMode.Shared, true, Math.Max(20, latencyMs / 2));
+        _output = new WasapiOut(device, AudioClientShareMode.Shared, true, Math.Max(20, latencyMs / 3));
         _output.Init(_buffer);
         _output.Play();
     }
@@ -692,10 +738,13 @@ internal sealed class Denoiser
     private float _gain = 0.03f;
     private readonly double _attackCoef;
     private readonly double _releaseCoef;
+    private readonly int _holdSamples;
+    private int _aboveSamples;
 
     private const double ClosedGain = 0.03;   // about -30 dB, near silent
-    private const double AttackMs = 4;
+    private const double AttackMs = 15;
     private const double ReleaseMs = 140;
+    private const double HoldMs = 12;
 
     public Denoiser(bool enabled, double strength)
     {
@@ -719,6 +768,7 @@ internal sealed class Denoiser
 
         _attackCoef = 1 - Math.Exp(-1.0 / (AttackMs / 1000.0 * sampleRate));
         _releaseCoef = 1 - Math.Exp(-1.0 / (ReleaseMs / 1000.0 * sampleRate));
+        _holdSamples = (int)(HoldMs / 1000.0 * sampleRate);
     }
 
     /// <summary>Processes one frame in place and returns its peak level (0..1).</summary>
@@ -788,7 +838,27 @@ internal sealed class Denoiser
         var thresholdDb = _noiseFloorDb + _marginDb;
         if (thresholdDb < -55) thresholdDb = -55;
 
-        var target = levelDb > thresholdDb ? 1.0 : ClosedGain;
+        // A mouse click is a 1-5 ms impulse: far above the threshold, but gone
+        // again almost immediately. Requiring the level to stay above the
+        // threshold for HoldMs before the gate may open means such an impulse is
+        // never amplified — the gate is still at ClosedGain when it is over.
+        // Speech sustains far longer than 12 ms, so this costs the voice nothing.
+        bool open;
+        if (_gain < 0.2f)
+        {
+            if (levelDb > thresholdDb) _aboveSamples++;
+            else _aboveSamples = 0;
+            open = _aboveSamples > _holdSamples;
+        }
+        else
+        {
+            // Already open: follow the level directly, so a syllable gap does not
+            // have to re-arm the hold.
+            open = levelDb > thresholdDb;
+            _aboveSamples = _holdSamples + 1;
+        }
+
+        var target = open ? 1.0 : ClosedGain;
         var smoothing = target > _gain ? _attackCoef : _releaseCoef;
         _gain += (float)((target - _gain) * smoothing);
 
